@@ -13,12 +13,6 @@ CHECKPOINTS_DIR = "./checkpoints/"
 GENERATED_SAMPLES_DIR = "./generated_samples/"
 
 
-def check_nan(tensor, name):
-    if tf.math.reduce_any(tf.math.is_nan(tensor)):
-        print("Found NaN element in tensor {}.".format(name))
-        tf.print(tensor)
-
-
 def log_normal_pdf(sample, mean, logvar, raxis=1):
     log2pi = tf.math.log(2. * np.pi)
     return tf.reduce_sum(
