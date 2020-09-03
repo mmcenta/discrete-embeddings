@@ -9,6 +9,7 @@ from model import CVAE
 
 
 EXP_EPS = 1e-8
+MODELS_DIR = "./models/"
 CHECKPOINTS_DIR = "./checkpoints/"
 GENERATED_SAMPLES_DIR = "./generated_samples/"
 
@@ -89,8 +90,11 @@ if __name__ == "__main__":
         tf.debugging.enable_check_numerics()
 
     # Create necessary directories
+    os.makedirs(MODELS_DIR, exist_ok=True)
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
     os.makedirs(GENERATED_SAMPLES_DIR, exist_ok=True)
+    checkpoint_dir = os.path.join(CHECKPOINTS_DIR, args.name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Load dataset
     (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
@@ -124,7 +128,6 @@ if __name__ == "__main__":
 
     # Run training loop
     model = CVAE(args.latent_dim, exp_eps=EXP_EPS)
-    random_tensor = tf.random.normal(shape=(args.n_examples, args.latent_dim)) # for generation
     generate_and_save_images(test_sample, 0, model, args.name)
     for epoch in range(1, args.epochs + 1):
         train_loss = tf.keras.metrics.Mean(name='train_loss')
@@ -137,8 +140,8 @@ if __name__ == "__main__":
         for x in test_dataset:
             test_loss(compute_loss(model, x))
         elbo = -test_loss.result()
-        print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
+        print('Epoch: {}, Test set ELBO: {}, time elapsed for current epoch: {}'
             .format(epoch, elbo, end_time - start_time))
         generate_and_save_images(test_sample, epoch, model, args.name)
-        model.save_weights(os.path.join(CHECKPOINTS_DIR,
-            "{}_epoch{:03d}.ckpt".format(args.name, epoch)))
+        model.save_weights(os.path.join(checkpoint_dir,
+            '{}_ld{}_epoch{}'.format(args.name, args.latent_dim, epoch)))

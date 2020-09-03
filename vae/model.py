@@ -12,7 +12,7 @@ class Encoder(tf.keras.Model):
         self.dense = tf.keras.layers.Dense(2 * latent_dim,
             kernel_initializer=tf.initializers.random_normal(mean=0.0, stddev=dense_init_std))
 
-    def __call__(self, x):
+    def call(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.flatten(x)
@@ -33,7 +33,7 @@ class Decoder(tf.keras.Model):
         self.deconv3 = tf.keras.layers.Conv2DTranspose(
             filters=1, kernel_size=3, strides=1, padding='same')
 
-    def __call__(self, z):
+    def call(self, z):
         z = self.dense(z)
         z = self.reshape(z)
         z = self.deconv1(z)
@@ -49,6 +49,11 @@ class CVAE(tf.keras.Model):
         self.exp_eps = exp_eps
         self.encoder = Encoder(latent_dim, dense_init_std=dense_init_std)
         self.decoder = Decoder(latent_dim)
+
+    def call(self, x):
+        mean, logvar = self.encode(x)
+        z = self.reparameterize(mean, logvar)
+        return self.decode(z, apply_sigmoid=True)
 
     def encode(self, x):
         mean, logvar = tf.split(self.encoder(x), num_or_size_splits=2, axis=1)
