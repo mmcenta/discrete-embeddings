@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from model import CVAE
+from vae import CVAE
 
 
 EXP_EPS = 1e-8
