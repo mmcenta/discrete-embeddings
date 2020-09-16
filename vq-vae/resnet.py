@@ -2,13 +2,15 @@ import tensorflow as tf
 
 
 class ResConvBlock(tf.keras.Model):
-    def __init__(self, n_in, n_hidden):
+    def __init__(self, n_in, n_residual_hidden):
         super(self, ResConvBlock).__init__()
         self.block = tf.keras.models.Sequential([
             tf.keras.layers.ReLU(),
-            tf.keras.layers.Conv2D(n_in, 3, padding='same'),
+            tf.keras.layers.Conv2D(n_residual_hidden, 3, strides=1,
+                padding='same'),
             tf.keras.layers.ReLU(),
-            tf.keras.layers.Conv2D(n_hidden, 1, padding='valid'),
+            tf.keras.layers.Conv2D(n_in, 1, strides=1,
+                padding='valid'),
         ])
 
     def call(self, x):
@@ -16,16 +18,17 @@ class ResConvBlock(tf.keras.Model):
 
 
 class ResidualStack(tf.keras.Model):
-    def __init__(self, n_in, n_hidden, n_blocks, apply_relu=False):
+    def __init__(self, n_in, n_residual_hidden, n_residual_blocks,
+        apply_relu=False):
         super(self, ResidualStack).__init__()
-        self.n_in = n_in
-        self.n_hidden = n_hidden
-        self.n_blocks = n_blocks
+        self._n_in = n_in
+        self._n_residual_hidden = n_residual_hidden
+        self._n_residual_blocks = n_residual_blocks
         self.apply_relu = apply_relu
 
         self.stack = tf.keras.models.Sequential()
-        for _ in range(n_blocks):
-            self.stack.add(ResConvBlock(n_in, n_hidden))
+        for _ in range(n_residual_blocks):
+            self.stack.add(ResConvBlock(n_in, n_residual_hidden))
         if apply_relu:
             self.stack.add(tf.keras.layers.ReLU())
 
