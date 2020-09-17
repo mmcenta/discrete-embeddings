@@ -109,7 +109,7 @@ if __name__ == "__main__":
     train_images = preprocess_images(train_images)
     test_images = preprocess_images(test_images)
 
-    # Shuffle data
+    # Shuffle data and split into batches
     train_size = train_images.shape[0]
     test_size = test_images.shape[0]
     train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
         .shuffle(test_size).batch(args.batch_size))
 
-    # Define optimizer and loss
+    # Define optimizer
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.learning_rate, clipnorm=1.0)
 
     # Pick a sample for generating sample images
