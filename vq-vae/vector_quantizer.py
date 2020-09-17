@@ -12,11 +12,11 @@ class VectorQuantizer(tf.keras.Model):
         self._n_embeddings = n_embeddings
         self._commitment_cost = commitment_cost
 
-        intial_w = initializer(shape=[embedding_dim, n_embeddings])
+        intial_w = initializer(shape=[n_embeddings, embedding_dim])
         self._w = tf.Variable(initial_value=intial_w, trainable=True,
             name="embedding")
 
-    def call(self, x, is_training):
+    def call(self, x):
         # validate the input shape and flatten
         tf.assert_equal(tf.shape(x)[-1], self._n_embeddings)
         flat_x = tf.reshape(x, (-1, self._n_embeddings))
@@ -39,7 +39,8 @@ class VectorQuantizer(tf.keras.Model):
 
         quantized = x + tf.stop_gradient(quantized - x) # gradients of quantized are copied over to x
         avg_probs = tf.reduce_mean(encodings, axis=0)
-        perplexity = tf.exp(- tf.reduce_sum(avg_probs * tf.log(avg_probs + EPS)))
+        perplexity = tf.math.exp(
+            -tf.reduce_sum(avg_probs * tf.math.log(avg_probs + EPS)))
 
         return {
             'quantized': quantized,
