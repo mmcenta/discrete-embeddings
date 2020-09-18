@@ -151,7 +151,7 @@ def print_metrics(title, logs, n_batches):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', '-n', type=str, default='vq_mnist',
+    parser.add_argument('--name', '-n', type=str, default='vqvae',
         help='Name of this run for logging.')
     parser.add_argument('--learning-rate', '-lr', type=float, default=1e-4,
         help="Learning rate for training. Defaults to 1e-4.")
@@ -169,6 +169,9 @@ if __name__ == "__main__":
     parser.add_argument('--n-examples', type=int, default=16,
         help='Number of examples to generate per training epoch.'
              'Defaults to 16.')
+    parser.add_argument('--cifar10', action='store_true',
+        help="If set the model is trained on the CIFAR-10 dataset instead of "
+             "MNIST.")
     args = parser.parse_args()
 
     # Check argument constraints
@@ -185,15 +188,20 @@ if __name__ == "__main__":
     os.makedirs(generated_samples_dir, exist_ok=True)
 
     # Load dataset
-    (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
+    if args.cifar10:
+        (train_images, _), (test_images, _) = tf.keras.datasets.cifar10.load_data()
+    else:
+        (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
 
     # Preprocess images
-    def preprocess_images(images):
+    def preprocess_images(images, is_cifar=False):
         # Add channel dimension and normalize color values
-        return (images.reshape((images.shape[0], 28, 28, 1)) / 255.0) - 0.5
+        if not is_cifar:
+            images = images.reshape((-1, 28, 28, 1))
+        return (images / 255.0) - 0.5
 
-    train_images = preprocess_images(train_images)
-    test_images = preprocess_images(test_images)
+    train_images = preprocess_images(train_images, is_cifar=args.cifar10)
+    test_images = preprocess_images(test_images, is_cifar=args.cifar10)
     train_data_variance = np.var(train_images)
 
     # Shuffle data and split into batches
@@ -214,7 +222,10 @@ if __name__ == "__main__":
         "original.png"))
 
     # Build model
-    encoder, decoder, pre_vq_conv = get_mnist_models(args.n_embeddings)
+    if args.cifar10:
+        encoder, decoder, pre_vq_conv = get_cifar10_models(args.embedding_dim)
+    else:
+        encoder, decoder, pre_vq_conv = get_mnist_models(args.embedding_dim)
     vq = VectorQuantizer(args.n_embeddings, args.embedding_dim,
         args.commitment_cost)
     model = VQVAE(encoder, decoder, pre_vq_conv, vq, train_data_variance)
