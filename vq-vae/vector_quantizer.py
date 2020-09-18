@@ -18,7 +18,7 @@ class VectorQuantizer(tf.keras.Model):
 
     def call(self, x):
         # validate the input shape and flatten
-        tf.assert_equal(tf.shape(x)[-1], self._embedding_dim
+        tf.assert_equal(tf.shape(x)[-1], self._embedding_dim)
         flat_x = tf.reshape(x, (-1, self._embedding_dim))
 
         # compute distances of the vectors in x_flat to the embedding vectors
