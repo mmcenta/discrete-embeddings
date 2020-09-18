@@ -5,21 +5,21 @@ EPS = 1e-10
 
 
 class VectorQuantizer(tf.keras.Model):
-    def __init__(self, embedding_dim, n_embeddings, commitment_cost,
+    def __init__(self, n_embeddings, embedding_dim, commitment_cost,
         initializer=tf.keras.initializers.RandomUniform(-1, 1)):
         super(VectorQuantizer, self).__init__()
         self._embedding_dim = embedding_dim
         self._n_embeddings = n_embeddings
         self._commitment_cost = commitment_cost
 
-        intial_w = initializer(shape=[n_embeddings, embedding_dim])
+        intial_w = initializer(shape=[embedding_dim, n_embeddings])
         self._w = tf.Variable(initial_value=intial_w, trainable=True,
             name="embedding")
 
     def call(self, x):
         # validate the input shape and flatten
-        tf.assert_equal(tf.shape(x)[-1], self._n_embeddings)
-        flat_x = tf.reshape(x, (-1, self._n_embeddings))
+        tf.assert_equal(tf.shape(x)[-1], self._embedding_dim
+        flat_x = tf.reshape(x, (-1, self._embedding_dim))
 
         # compute distances of the vectors in x_flat to the embedding vectors
         distances = (tf.reduce_sum(flat_x ** 2, axis=1, keepdims=True)
