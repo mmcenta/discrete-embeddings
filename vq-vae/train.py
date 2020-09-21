@@ -1,13 +1,14 @@
-from collections import defaultdict
+import datetime
 import glob
 import os
-import pickle
 import time
 
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.manifold import TSNE
 import tensorflow as tf
+import tensorflow.keras as K
 
 from resnet import ResidualStack
 from vector_quantizer import VectorQuantizer
@@ -15,9 +16,11 @@ from vqvae import VQVAE
 
 
 CHECKPOINTS_DIR = "./checkpoints/"
-GENERATED_SAMPLES_DIR = "./generated_samples/"
+PLOTS_DIR = "./plots/"
 LOGS_DIR = "./logs/"
 MODELS_DIR = "./models/"
+
+METRICS = ['loss', 'recon_error', 'perplexity', 'vqvae_loss']
 
 
 def get_mnist_models(embedding_dim, n_filters=[16, 32]):
@@ -34,19 +37,19 @@ def get_mnist_models(embedding_dim, n_filters=[16, 32]):
     Returns:
         A Tuple (encoder, decoder, pre_conv_vq) with the corresponding models.
     """
-    encoder = tf.keras.models.Sequential()
+    encoder = K.models.Sequential()
     for i, f in enumerate(n_filters):
-        encoder.add(tf.keras.layers.Conv2D(f, 3, strides=(2, 2),
+        encoder.add(K.layers.Conv2D(f, 3, strides=(2, 2),
             padding='same', activation='relu', name='conv{}'.format(i)))
 
-    pre_vq_conv = tf.keras.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
+    pre_vq_conv = K.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
         padding='same', name='pre_vq_conv')
 
-    decoder = tf.keras.models.Sequential()
+    decoder = K.models.Sequential()
     for i, f in enumerate(reversed(n_filters)):
-        decoder.add(tf.keras.layers.Conv2DTranspose(f, 4, strides=(2, 2),
+        decoder.add(K.layers.Conv2DTranspose(f, 4, strides=(2, 2),
             padding='same', activation='relu', name='convT{}'.format(i)))
-    decoder.add(tf.keras.layers.Conv2DTranspose(1, 3, strides=(1, 1),
+    decoder.add(K.layers.Conv2DTranspose(1, 3, strides=(1, 1),
         padding='same', name='output'))
 
     return encoder, decoder, pre_vq_conv
@@ -72,34 +75,34 @@ def get_cifar10_models(embedding_dim, filters=[64, 128], n_residual_filters=32,
         A Tuple (encoder, decoder, pre_conv_vq) with the corresponding models.
     """
     n_final_filters = filters[-1]
-    encoder = tf.keras.models.Sequential()
+    encoder = K.models.Sequential()
     for i, f in enumerate(filters):
-        encoder.add(tf.keras.layers.Conv2D(f, 4, strides=(2, 2),
+        encoder.add(K.layers.Conv2D(f, 4, strides=(2, 2),
             padding='same', activation='relu', name='conv{}'.format(i)))
-    encoder.add(tf.keras.layers.Conv2D(n_final_filters, 3, stides=(1, 1),
+    encoder.add(K.layers.Conv2D(n_final_filters, 3, strides=(1, 1),
         padding='same', activation='relu', name="conv{}".format(len(filters))))
     encoder.add(ResidualStack(n_final_filters, n_residual_filters,
         n_residual_blocks))
 
-    pre_vq_conv = tf.keras.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
+    pre_vq_conv = K.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
         padding='same', name='pre_vq_conv')
 
-    decoder = tf.keras.models.Sequential()
-    decoder.add(tf.keras.layers.Conv2D(n_final_filters, 3, strides=(1, 1),
+    decoder = K.models.Sequential()
+    decoder.add(K.layers.Conv2D(n_final_filters, 3, strides=(1, 1),
         padding='same', activation='relu', name="convt0"))
     decoder.add(ResidualStack(n_final_filters, n_residual_filters,
         n_residual_blocks))
     for i, f in enumerate(reversed(filters[1:]), start=1):
-        decoder.add(tf.keras.layers.Conv2D(f, 4, strides=(2, 2),
+        decoder.add(K.layers.Conv2DTranspose(f, 4, strides=(2, 2),
             padding='same', activation='relu', name='convt{}'.format(i)))
-    decoder.add(tf.keras.layers.Conv2D(3, 4, strides=(2, 2),
+    decoder.add(K.layers.Conv2DTranspose(3, 4, strides=(2, 2),
         padding="same", name='convt{}'.format(len(filters))))
 
     return encoder, decoder, pre_vq_conv
 
 
 @tf.function
-def train_step(model, image_batch, optimizer):
+def train_step(model, image_batch, optimizer, metrics):
     """
     Executes one training step and returns the model output.
     """
@@ -107,45 +110,93 @@ def train_step(model, image_batch, optimizer):
         model_output = model(image_batch)
     gradients = tape.gradient(model_output['loss'], model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    for m in METRICS:
+        metrics[m](model_output[m])
     return model_output
 
+@tf.function
+def test_step(model, image_batch, metrics):
+    model_output = model(image_batch)
+    for m in METRICS:
+        metrics[m](model_output[m])
 
-def save_images(images, image_path):
+
+def write_metrics(summary_writer, metrics, epoch):
+    with summary_writer.as_default():
+        for m in METRICS:
+            tf.summary.scalar(m, metrics[m].result(), step=epoch)
+
+
+def print_metrics(title, metrics):
+    template = ('{} Metrics:\n  Loss: {}\n  Reconstruction Error: {}\n'
+        '  Perplexity: {}\n  VQ-VAE Loss: {}')
+    print(template.format(title,
+        metrics['loss'].result(), metrics['recon_error'].result(),
+        metrics['perplexity'].result(), metrics['vqvae_loss'].result()))
+
+
+def save_images(images, image_path, is_cifar10):
     batch_size = images.shape[0]
+
+    # Convert real values back to pixel values
+    images = np.clip(images.numpy(), -0.5, 0.5)
+    images = 255 * (images + 0.5)
+    images = images.astype("uint8")
+
+    # Plot each image in a grid
     fig = plt.figure(figsize=(4, 4))
     for i in range(images.shape[0]):
         plt.subplot(4, 4, i + 1)
-        plt.imshow(images[i, :, :, 0], cmap="gray")
+        if is_cifar10:
+            plt.imshow(images[i, :, :, :])
+        else:
+            plt.imshow(images[i, :, :, 0], cmap="gray")
         plt.axis('off')
     plt.savefig(image_path)
-    plt.close()
+    plt.close(fig)
 
 
-def generate_and_save_images(model, originals, epoch, generated_samples_dir):
+def generate_and_save_images(model, originals, epoch, plots_dir, is_cifar10):
     model_output = model(originals)
-    save_images(model_output['x_recon'], os.path.join(generated_samples_dir,
-        "epoch{:02d}.png".format(epoch)))
+    save_images(model_output['x_recon'], os.path.join(plots_dir,
+        "generated_samples/epoch{:02d}.png".format(epoch)), is_cifar10)
 
 
-def record_output(logs, output):
-    if logs is None:
-        logs = defaultdict(list)
-    for k, v in output.items():
-        logs[k].append(v)
-    return logs
+def average_smoothing(s, window_size):
+    """
+    Smooths a series of scalars to its moving window average.
+    Inspired by: https://scipy-cookbook.readthedocs.io/items/SignalSmooth.html
+
+    Args:
+        s: a series of scalars
+        window_size: the size of the moving window
+
+    Returns:
+        a np.array of the same length of series containing the averages
+    """
+    if window_size < 2:
+        return s
+    s = np.r_[s[window_size-1:0:-1], s, s[-2:-window_size-1:-1]]
+    window = np.ones(window_size) / window_size
+    smooth_s = np.convolve(s, window, mode='valid')
+    if window_size % 2 == 0:
+        smooth_s = smooth_s[(window_size//2-1):-(window_size//2)]
+    else:
+        smooth_s = smooth_s[(window_size//2):-(window_size//2)]
+    return smooth_s
 
 
-def print_metrics(title, logs, n_batches):
-    lines = ['{}:'.format(title)]
-    lines.append('  Loss: {}'.format(np.mean(
-        logs['loss'][-n_batches:])))
-    lines.append('  Reconstruction Error: {}'.format(np.mean(
-        logs['recon_error'][-n_batches:])))
-    lines.append('  Perplexity: {}'.format(np.mean(
-        logs['perplexity'][-n_batches:])))
-    lines.append('  VQVAE Loss: {}'.format(np.mean(
-        logs['vqvae_loss'][-n_batches:])))
-    print('\n'.join(lines))
+def plot_codebook(embeddings, plots_dir):
+    embeddings = embeddings.numpy().T
+
+    codes = TSNE(n_components=2).fit_transform(embeddings)
+    x, y = codes[:, 0], codes[:, 1]
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.scatter(x, y)
+    ax.set_title('T-SNE of codebook')
+    fig.savefig(os.path.join(plots_dir, "codebook.png"))
+    plt.close(fig)
 
 
 if __name__ == "__main__":
@@ -179,19 +230,26 @@ if __name__ == "__main__":
 
     # Create necessary directories
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
-    os.makedirs(GENERATED_SAMPLES_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
     os.makedirs(MODELS_DIR, exist_ok=True)
+    os.makedirs(PLOTS_DIR, exist_ok=True)
     checkpoints_dir = os.path.join(CHECKPOINTS_DIR, args.name)
     os.makedirs(checkpoints_dir, exist_ok=True)
-    generated_samples_dir = os.path.join(GENERATED_SAMPLES_DIR, args.name)
-    os.makedirs(generated_samples_dir, exist_ok=True)
+    plots_dir = os.path.join(PLOTS_DIR, args.name)
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(os.path.join(plots_dir, 'generated_samples/'), exist_ok=True)
+
+    # Remove samples from previous runs
+    for file in glob.glob(os.path.join(plots_dir, "generated_samples/*")):
+        os.remove(file)
+
+    print('Loading {} data...'.format('CIFAR-10' if args.cifar10 else 'MNIST'))
 
     # Load dataset
     if args.cifar10:
-        (train_images, _), (test_images, _) = tf.keras.datasets.cifar10.load_data()
+        (train_images, _), (test_images, _) = K.datasets.cifar10.load_data()
     else:
-        (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
+        (train_images, _), (test_images, _) = K.datasets.mnist.load_data()
 
     # Preprocess images
     def preprocess_images(images, is_cifar=False):
@@ -212,14 +270,9 @@ if __name__ == "__main__":
     test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
         .shuffle(test_size).batch(args.batch_size))
 
+    print('Building model...')
     # Define optimizer
     optimizer = tf.optimizers.Adam(learning_rate=args.learning_rate)
-
-    # Pick a sample for generating sample images
-    for test_batch in test_dataset.take(1):
-        test_sample = test_batch[0:args.n_examples, :, :, :]
-    save_images(test_sample, os.path.join(generated_samples_dir,
-        "original.png"))
 
     # Build model
     if args.cifar10:
@@ -230,44 +283,82 @@ if __name__ == "__main__":
         args.commitment_cost)
     model = VQVAE(encoder, decoder, pre_vq_conv, vq, train_data_variance)
 
+    # Initialize logs
+    print('Setting up logs...')
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    train_log_dir = os.path.join(LOGS_DIR, "{}/{}/train/".format(
+        args.name, current_time))
+    test_log_dir = os.path.join(LOGS_DIR, "{}/{}/test/".format(
+        args.name, current_time))
+    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+    test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+    train_metrics = {m: tf.metrics.Mean(m, dtype=tf.float32) for m in METRICS}
+    test_metrics = {m: tf.metrics.Mean(m, dtype=tf.float32) for m in METRICS}
+
+     # Pick a sample for generating sample images
+    test_sample = None
+    for test_batch in test_dataset.take(1):
+        test_sample = test_batch[0:args.n_examples, :, :, :]
+    save_images(test_sample, os.path.join(plots_dir,
+        'generated_samples/original.png'), args.cifar10)
+
+    # Generate data for epoch 0
+    generate_and_save_images(model, test_sample, 0, plots_dir, args.cifar10)
+    for image_batch in train_dataset:
+        test_step(model, image_batch, train_metrics)
+    write_metrics(train_summary_writer, train_metrics, 0)
+    for image_batch in test_dataset:
+        test_step(model, image_batch, test_metrics)
+    write_metrics(test_summary_writer, test_metrics, 0)
+
+    print('Checkpoints will be saved to {}.'.format(checkpoints_dir))
+    print('Begin training...')
+
     # Run training loop
     n_train_batches = len(train_dataset)
     n_test_batches = len(test_dataset)
-    train_logs = None
-    test_logs = None
-    generate_and_save_images(model, test_sample, 0, generated_samples_dir)
     for epoch in range(1, args.epochs + 1):
+        # Train for an epoch
+        print("\nEpoch {}:".format(epoch))
         start_time = time.time()
         for image_batch in train_dataset:
-            train_output = train_step(model, image_batch, optimizer)
-            train_logs = record_output(train_logs, train_output)
+            train_step(model, image_batch, optimizer, train_metrics)
         end_time = time.time()
+        print('Elapsed time: {}'.format(epoch, end_time - start_time))
+        write_metrics(train_summary_writer, train_metrics, epoch)
+        print_metrics("Train", train_metrics)
 
-        print('Epoch: {} / time elapsed for current epoch: {}'
-              .format(epoch, end_time - start_time))
-        print_metrics("Train", train_logs, n_train_batches)
-
+        # Evaluate model on test set
         for image_batch in test_dataset:
-            test_output = model(image_batch)
-            test_logs = record_output(test_logs, test_output)
-        print_metrics("Test", test_logs, n_test_batches)
-        generate_and_save_images(model, test_sample, epoch,
-            generated_samples_dir)
+            test_step(model, image_batch, test_metrics)
+        write_metrics(test_summary_writer, test_metrics, epoch)
+        print_metrics("Test", test_metrics)
+
+        # Print metrics and save checkpoint
+        generate_and_save_images(model, test_sample, epoch, plots_dir,
+            args.cifar10)
         model.save_weights(os.path.join(checkpoints_dir,
             '{}_epoch{}'.format(args.name, epoch)))
 
-    logs = {'train': train_logs, 'test': test_logs}
-    with open(os.path.join(LOGS_DIR, "{}.pkl".format(args.name)), "wb") as f:
-        pickle.dump(logs, f)
+    # Save model
+    print('Saving models to {}...'.format(MODELS_DIR, args.name))
     model.save(os.path.join(MODELS_DIR, args.name))
 
     # Make GIF with images generated during training
-    gif_file = os.path.join(generated_samples_dir, "training_animation.gif")
+    gif_file = os.path.join(plots_dir, "training_animation.gif")
+    print("Saving training animation to {}...".format(gif_file))
     with imageio.get_writer(gif_file, mode='I') as writer:
-        filenames = glob.glob(os.path.join(generated_samples_dir, "epoch*"))
-        filenames = sorted(filenames)
-        for filename in filenames:
+        filenames = glob.glob(os.path.join(plots_dir,
+            "generated_samples/epoch*"))
+        for filename in sorted(filenames):
             image = imageio.imread(filename)
             writer.append_data(image)
-        image = imageio.imread(filename)
+        image = imageio.imread(filenames[-1])
         writer.append_data(image)
+
+    # Plot learned embeddings in two dimensions
+    print('Plotting codebook to {}...'.format(os.path.join(plots_dir,
+        "codebook.png")))
+    embeddings = plot_codebook(model.get_embeddings(), plots_dir)
+
+    print('Finished.')
