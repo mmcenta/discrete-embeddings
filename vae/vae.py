@@ -1,15 +1,16 @@
 import tensorflow as tf
+import tensorflow.keras as K
 
 
-class Encoder(tf.keras.Model):
+class Encoder(K.Model):
     def __init__(self, latent_dim, dense_init_std=0.01):
         super(Encoder, self).__init__()
-        self.conv1 = tf.keras.layers.Conv2D(
+        self.conv1 = K.layers.Conv2D(
             filters=32, kernel_size=3, strides=2, activation='relu')
-        self.conv2 = tf.keras.layers.Conv2D(
+        self.conv2 = K.layers.Conv2D(
             filters=64, kernel_size=3, strides=2, activation='relu')
-        self.flatten = tf.keras.layers.Flatten()
-        self.dense = tf.keras.layers.Dense(2 * latent_dim,
+        self.flatten = K.layers.Flatten()
+        self.dense = K.layers.Dense(2 * latent_dim,
             kernel_initializer=tf.initializers.random_normal(mean=0.0, stddev=dense_init_std))
 
     def call(self, x):
@@ -19,18 +20,18 @@ class Encoder(tf.keras.Model):
         return self.dense(x)
 
 
-class Decoder(tf.keras.Model):
+class Decoder(K.Model):
     def __init__(self, latent_dim):
         super(Decoder, self).__init__()
-        self.dense = tf.keras.layers.Dense(7*7*32, activation='relu')
-        self.reshape = tf.keras.layers.Reshape(target_shape=(7, 7, 32))
-        self.deconv1 = tf.keras.layers.Conv2DTranspose(
+        self.dense = K.layers.Dense(7*7*32, activation='relu')
+        self.reshape = K.layers.Reshape(target_shape=(7, 7, 32))
+        self.deconv1 = K.layers.Conv2DTranspose(
             filters=64, kernel_size=3, strides=2, padding='same',
             activation='relu')
-        self.deconv2 = tf.keras.layers.Conv2DTranspose(
+        self.deconv2 = K.layers.Conv2DTranspose(
             filters=32, kernel_size=3, strides=2, padding='same',
             activation='relu')
-        self.deconv3 = tf.keras.layers.Conv2DTranspose(
+        self.deconv3 = K.layers.Conv2DTranspose(
             filters=1, kernel_size=3, strides=1, padding='same')
 
     def call(self, z):
@@ -41,7 +42,7 @@ class Decoder(tf.keras.Model):
         return self.deconv3(z)
 
 
-class CVAE(tf.keras.Model):
+class CVAE(K.Model):
     """Convolutional Variational Auto-Encoder for MNIST"""
     def __init__(self, latent_dim, dense_init_std=0.01, exp_eps=1e-8):
         super(CVAE, self).__init__()

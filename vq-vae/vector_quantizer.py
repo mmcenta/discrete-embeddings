@@ -1,12 +1,13 @@
 import tensorflow as tf
+import tensorflow.keras as K
 
 
 EPS = 1e-10
 
 
-class VectorQuantizer(tf.keras.Model):
+class VectorQuantizer(K.Model):
     def __init__(self, n_embeddings, embedding_dim, commitment_cost,
-        initializer=tf.keras.initializers.RandomUniform(-1, 1)):
+        initializer=K.initializers.RandomUniform(-1, 1)):
         super(VectorQuantizer, self).__init__()
         self._embedding_dim = embedding_dim
         self._n_embeddings = n_embeddings

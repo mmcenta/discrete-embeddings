@@ -4,6 +4,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import tensorflow.keras as K
 
 from vae import CVAE
 
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Load dataset
-    (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
+    (train_images, _), (test_images, _) = K.datasets.mnist.load_data()
 
     # Preprocess images
     def preprocess_images(images):
@@ -118,7 +119,7 @@ if __name__ == "__main__":
         .shuffle(test_size).batch(args.batch_size))
 
     # Define optimizer
-    optimizer = tf.keras.optimizers.Adam(learning_rate=args.learning_rate, clipnorm=1.0)
+    optimizer = K.optimizers.Adam(learning_rate=args.learning_rate, clipnorm=1.0)
 
     # Pick a sample for generating sample images
     for test_batch in test_dataset.take(1):
@@ -130,8 +131,8 @@ if __name__ == "__main__":
     model = CVAE(args.latent_dim, exp_eps=EXP_EPS)
     generate_and_save_images(test_sample, 0, model, args.name)
     for epoch in range(1, args.epochs + 1):
-        train_loss = tf.keras.metrics.Mean(name='train_loss')
-        test_loss = tf.keras.metrics.Mean(name='test_loss')
+        train_loss = K.metrics.Mean(name='train_loss')
+        test_loss = K.metrics.Mean(name='test_loss')
         start_time = time.time()
         for x in train_dataset:
             train_loss(train_step(model, x, optimizer))
