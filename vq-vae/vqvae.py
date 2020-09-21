@@ -1,9 +1,10 @@
 import tensorflow as tf
+import tensorflow.keras as K
 
 from encoder_decoder import Encoder, Decoder
 from vector_quantizer import VectorQuantizer
 
-class VQVAE(tf.keras.Model):
+class VQVAE(K.Model):
     def __init__(self, encoder, decoder, pre_vq_conv, vector_quantizer,
         data_variance):
         super(VQVAE, self).__init__()
@@ -12,6 +13,9 @@ class VQVAE(tf.keras.Model):
         self._pre_vq_conv = pre_vq_conv
         self._vq = vector_quantizer
         self._data_variance = data_variance
+
+    def get_embeddings(self):
+        return self._vq.embeddings
 
     def call(self, x):
         z = self._pre_vq_conv(self._encoder(x))
