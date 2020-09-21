@@ -77,5 +77,5 @@ if __name__ == "__main__":
 
     plots_dir = os.path.join(PLOTS_DIR, args.name)
     os.makedirs(plots_dir, exist_ok=True)
-    fig.savefig(os.path.join(plots_dir, "quantized_visualization.png"))
+    fig.savefig(os.path.join(plots_dir, "code_visualization.png"))
     plt.close(fig)
