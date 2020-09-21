@@ -131,6 +131,9 @@ dmypy.json
 # VSCode configuration files
 .vscode/
 
+# Large pickle dumps
+*.pkl
+
 # model checkpoints and saves
 checkpoints/
 models/
