@@ -19,7 +19,7 @@ if __name__ == "__main__":
         help="Name of the model used for quantization.")
     parser.add_argument('--n-embeddings', '-ne', type=int, required=True,
         help='Number of embedding vectors.')
-    parser.add_argument('--length', '-length', type=int, default=6,
+    parser.add_argument('--length', '-l', type=int, default=6,
         help="Length of the side of the grid that will be generated."
              " Defaults to 6.")
     parser.add_argument('-train', action="store_true",
