@@ -220,7 +220,7 @@ if __name__ == "__main__":
     parser.add_argument('--n-examples', type=int, default=16,
         help='Number of examples to generate per training epoch.'
              'Defaults to 16.')
-    parser.add_argument('--cifar10', action='store_true',
+    parser.add_argument('-cifar10', action='store_true',
         help="If set the model is trained on the CIFAR-10 dataset instead of "
              "MNIST.")
     args = parser.parse_args()

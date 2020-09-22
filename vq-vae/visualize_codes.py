@@ -22,10 +22,10 @@ if __name__ == "__main__":
     parser.add_argument('--length', '-length', type=int, default=6,
         help="Length of the side of the grid that will be generated."
              " Defaults to 6.")
-    parser.add_argument('--train', action="store_true",
+    parser.add_argument('-train', action="store_true",
         help="If set images will be sampled from the training set instead of "
              "the test set.")
-    parser.add_argument('--cifar10', action='store_true',
+    parser.add_argument('-cifar10', action='store_true',
         help="If set the CIFAR-10 dataset will be used instead of MNIST.")
     args = parser.parse_args()
 
