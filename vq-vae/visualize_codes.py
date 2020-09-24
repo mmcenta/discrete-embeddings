@@ -1,5 +1,4 @@
 import os
-import pickle
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt

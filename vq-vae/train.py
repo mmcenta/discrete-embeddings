@@ -10,9 +10,9 @@ from sklearn.manifold import TSNE
 import tensorflow as tf
 import tensorflow.keras as K
 
-from resnet import ResidualStack
 from vector_quantizer import VectorQuantizer
-from vqvae import VQVAE
+from vqvae import get_mnist_models, get_cifar10_models
+from util import save_hyperparameters
 
 
 CHECKPOINTS_DIR = "./checkpoints/"
@@ -21,84 +21,6 @@ LOGS_DIR = "./logs/"
 MODELS_DIR = "./models/"
 
 METRICS = ['loss', 'recon_error', 'perplexity', 'vqvae_loss']
-
-
-def get_mnist_models(embedding_dim, n_filters=[16, 32]):
-    """
-    Gets the Encoder, Decoder and Pre-Vector Quantization Convolution models
-    for use with the MNIST dataset.
-
-    Args:
-        n_embeddings: The number of embedding vectors used in vector
-            quantization.
-        filters: A list with the number of filters for each convolutional
-            layer in the Decoder and Encoder.
-
-    Returns:
-        A Tuple (encoder, decoder, pre_conv_vq) with the corresponding models.
-    """
-    encoder = K.models.Sequential()
-    for i, f in enumerate(n_filters):
-        encoder.add(K.layers.Conv2D(f, 3, strides=(2, 2),
-            padding='same', activation='relu', name='conv{}'.format(i)))
-
-    pre_vq_conv = K.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
-        padding='same', name='pre_vq_conv')
-
-    decoder = K.models.Sequential()
-    for i, f in enumerate(reversed(n_filters)):
-        decoder.add(K.layers.Conv2DTranspose(f, 4, strides=(2, 2),
-            padding='same', activation='relu', name='convT{}'.format(i)))
-    decoder.add(K.layers.Conv2DTranspose(1, 3, strides=(1, 1),
-        padding='same', name='output'))
-
-    return encoder, decoder, pre_vq_conv
-
-
-def get_cifar10_models(embedding_dim, filters=[64, 128], n_residual_filters=32,
-    n_residual_blocks=2):
-    """
-    Gets the Encoder, Decoder and Pre-Vector Quantization Convolution models
-    for use with the CIFAR-10 dataset.
-
-    Args:
-        n_embeddings: The number of embedding vectors used in vector
-            quantization.
-        filters: A list with the number of filters for convolutional
-            layers in the Encoder and Decoder.
-        n_residual_filters: The number of filters in the bottleneck of
-            residual blocks in the Encoder and Decoder
-        n_residual_blocks: The number of residual in the Encoder and
-            Decoder.
-
-    Returns:
-        A Tuple (encoder, decoder, pre_conv_vq) with the corresponding models.
-    """
-    n_final_filters = filters[-1]
-    encoder = K.models.Sequential()
-    for i, f in enumerate(filters):
-        encoder.add(K.layers.Conv2D(f, 4, strides=(2, 2),
-            padding='same', activation='relu', name='conv{}'.format(i)))
-    encoder.add(K.layers.Conv2D(n_final_filters, 3, strides=(1, 1),
-        padding='same', activation='relu', name="conv{}".format(len(filters))))
-    encoder.add(ResidualStack(n_final_filters, n_residual_filters,
-        n_residual_blocks))
-
-    pre_vq_conv = K.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
-        padding='same', name='pre_vq_conv')
-
-    decoder = K.models.Sequential()
-    decoder.add(K.layers.Conv2D(n_final_filters, 3, strides=(1, 1),
-        padding='same', activation='relu', name="convt0"))
-    decoder.add(ResidualStack(n_final_filters, n_residual_filters,
-        n_residual_blocks))
-    for i, f in enumerate(reversed(filters[1:]), start=1):
-        decoder.add(K.layers.Conv2DTranspose(f, 4, strides=(2, 2),
-            padding='same', activation='relu', name='convt{}'.format(i)))
-    decoder.add(K.layers.Conv2DTranspose(3, 4, strides=(2, 2),
-        padding="same", name='convt{}'.format(len(filters))))
-
-    return encoder, decoder, pre_vq_conv
 
 
 @tf.function
@@ -228,12 +150,16 @@ if __name__ == "__main__":
     # Check argument constraints
     assert args.batch_size >= args.n_examples
 
+    # Get current time
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
     # Create necessary directories
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
     os.makedirs(MODELS_DIR, exist_ok=True)
     os.makedirs(PLOTS_DIR, exist_ok=True)
-    checkpoints_dir = os.path.join(CHECKPOINTS_DIR, args.name)
+    checkpoints_dir = os.path.join(CHECKPOINTS_DIR, "{}/{}/".format(
+        current_time, args.name))
     os.makedirs(checkpoints_dir, exist_ok=True)
     plots_dir = os.path.join(PLOTS_DIR, args.name)
     os.makedirs(plots_dir, exist_ok=True)
@@ -275,6 +201,15 @@ if __name__ == "__main__":
     optimizer = tf.optimizers.Adam(learning_rate=args.learning_rate)
 
     # Build model
+    hyperparams = {
+        'embedding_dim': args.embedding_dim,
+        'n_embeddings': args.n_embeddings,
+        'commmitment_cost': args.commitment_cost,
+        'train_data_variance': train_data_variance,
+    }
+    save_hyperparameters(os.path.join(checkpoints_dir, 'hyperparams.json'),
+        hyperparams)
+
     if args.cifar10:
         encoder, decoder, pre_vq_conv = get_cifar10_models(args.embedding_dim)
     else:
@@ -315,8 +250,6 @@ if __name__ == "__main__":
     print('Begin training...')
 
     # Run training loop
-    n_train_batches = len(train_dataset)
-    n_test_batches = len(test_dataset)
     for epoch in range(1, args.epochs + 1):
         # Train for an epoch
         print("\nEpoch {}:".format(epoch))
@@ -339,6 +272,11 @@ if __name__ == "__main__":
             args.cifar10)
         model.save_weights(os.path.join(checkpoints_dir,
             '{}_epoch{}'.format(args.name, epoch)))
+
+        # Reset metrics
+        for m in METRICS:
+            train_metrics[m].reset_states()
+            test_metrics[m].reset_states()
 
     # Save model
     print('Saving models to {}...'.format(MODELS_DIR, args.name))
