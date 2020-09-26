@@ -10,8 +10,7 @@ from sklearn.manifold import TSNE
 import tensorflow as tf
 import tensorflow.keras as K
 
-from vector_quantizer import VectorQuantizer
-from vqvae import get_mnist_models, get_cifar10_models
+from vqvae import get_mnist_vqvae, get_cifar10_vqvae
 from util import save_hyperparameters
 
 
@@ -159,7 +158,7 @@ if __name__ == "__main__":
     os.makedirs(MODELS_DIR, exist_ok=True)
     os.makedirs(PLOTS_DIR, exist_ok=True)
     checkpoints_dir = os.path.join(CHECKPOINTS_DIR, "{}/{}/".format(
-        current_time, args.name))
+        args.name, current_time))
     os.makedirs(checkpoints_dir, exist_ok=True)
     plots_dir = os.path.join(PLOTS_DIR, args.name)
     os.makedirs(plots_dir, exist_ok=True)
@@ -210,13 +209,13 @@ if __name__ == "__main__":
     save_hyperparameters(os.path.join(checkpoints_dir, 'hyperparams.json'),
         hyperparams)
 
+    model = None
     if args.cifar10:
-        encoder, decoder, pre_vq_conv = get_cifar10_models(args.embedding_dim)
+        model = get_cifar10_vqvae(args.n_embeddings, args.embedding_dim,
+            args.commitment_cost, train_data_variance)
     else:
-        encoder, decoder, pre_vq_conv = get_mnist_models(args.embedding_dim)
-    vq = VectorQuantizer(args.n_embeddings, args.embedding_dim,
-        args.commitment_cost)
-    model = VQVAE(encoder, decoder, pre_vq_conv, vq, train_data_variance)
+        model = get_mnist_vqvae(args.n_embeddings, args.embedding_dim,
+            args.commitment_cost, train_data_variance)
 
     # Initialize logs
     print('Setting up logs...')
@@ -257,7 +256,7 @@ if __name__ == "__main__":
         for image_batch in train_dataset:
             train_step(model, image_batch, optimizer, train_metrics)
         end_time = time.time()
-        print('Elapsed time: {}'.format(epoch, end_time - start_time))
+        print('Elapsed time: {}'.format(end_time - start_time))
         write_metrics(train_summary_writer, train_metrics, epoch)
         print_metrics("Train", train_metrics)
 
