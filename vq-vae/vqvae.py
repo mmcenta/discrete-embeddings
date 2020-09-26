@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow.keras as K
 
 from resnet import ResidualStack
+from vector_quantizer import VectorQuantizer
 
 class VQVAE(K.Model):
     def __init__(self, encoder, decoder, pre_vq_conv, vector_quantizer,
@@ -33,14 +34,17 @@ class VQVAE(K.Model):
         }
 
 
-def get_mnist_models(embedding_dim, n_filters=[16, 32]):
+def get_mnist_vqvae(n_embeddings, embedding_dim, commitment_cost,
+    train_data_variance, n_filters=[16, 32]):
     """
     Gets the Encoder, Decoder and Pre-Vector Quantization Convolution models
     for use with the MNIST dataset.
 
     Args:
-        n_embeddings: The number of embedding vectors used in vector
-            quantization.
+        n_embeddings: Number of embedding vectors used in vector quantization.
+        embedding_dim: Number of dimensions of the embedding vectors.
+        commitment_cost: Commitment cost for the Vector Quantizer loss.
+        train_data_variance: Variance of the training data.
         filters: A list with the number of filters for each convolutional
             layer in the Decoder and Encoder.
 
@@ -51,7 +55,6 @@ def get_mnist_models(embedding_dim, n_filters=[16, 32]):
     for i, f in enumerate(n_filters):
         encoder.add(K.layers.Conv2D(f, 3, strides=(2, 2),
             padding='same', activation='relu', name='conv{}'.format(i)))
-
     pre_vq_conv = K.layers.Conv2D(embedding_dim, 1, strides=(1, 1),
         padding='same', name='pre_vq_conv')
 
@@ -62,24 +65,27 @@ def get_mnist_models(embedding_dim, n_filters=[16, 32]):
     decoder.add(K.layers.Conv2DTranspose(1, 3, strides=(1, 1),
         padding='same', name='output'))
 
-    return encoder, decoder, pre_vq_conv
+    vq = VectorQuantizer(n_embeddings, embedding_dim, commitment_cost)
+
+    return VQVAE(encoder, decoder, pre_vq_conv, vq, train_data_variance)
 
 
-def get_cifar10_models(embedding_dim, filters=[64, 128], n_residual_filters=32,
-    n_residual_blocks=2):
+def get_cifar10_vqvae(n_embeddings, embedding_dim, commitment_cost,
+    train_data_variance, filters=[64, 128], n_residual_filters=32, n_residual_blocks=2):
     """
     Gets the Encoder, Decoder and Pre-Vector Quantization Convolution models
     for use with the CIFAR-10 dataset.
 
     Args:
-        n_embeddings: The number of embedding vectors used in vector
-            quantization.
-        filters: A list with the number of filters for convolutional
-            layers in the Encoder and Decoder.
-        n_residual_filters: The number of filters in the bottleneck of
-            residual blocks in the Encoder and Decoder
-        n_residual_blocks: The number of residual in the Encoder and
-            Decoder.
+        n_embeddings: Number of embedding vectors used in vector quantization.
+        embedding_dim: Number of dimensions of the embedding vectors.
+        commitment_cost: Commitment cost for the Vector Quantizer loss.
+        train_data_variance: Variance of the training data.
+        filters: A list with the number of filters for convolutional layers in
+            the Encoder and Decoder.
+        n_residual_filters: The number of filters in the bottleneck of residual
+            blocks in the Encoder and Decoder.
+        n_residual_blocks: The number of residual in the Encoder and Decoder.
 
     Returns:
         A Tuple (encoder, decoder, pre_conv_vq) with the corresponding models.
@@ -108,4 +114,6 @@ def get_cifar10_models(embedding_dim, filters=[64, 128], n_residual_filters=32,
     decoder.add(K.layers.Conv2DTranspose(3, 4, strides=(2, 2),
         padding="same", name='convt{}'.format(len(filters))))
 
-    return encoder, decoder, pre_vq_conv
+    vq = VectorQuantizer(n_embeddings, embedding_dim, commitment_cost)
+
+    return VQVAE(encoder, decoder, pre_vq_conv, vq, train_data_variance)
