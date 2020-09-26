@@ -1,6 +1,6 @@
-# vae-lab
+# discrete-embeddings
 
-This repository contains *TensorFlow 2* implementations of a few VAE papers that caught my interest. Each directory contains a paper implementation and results from experiments. Currently, the following papers are implemented:
+This repository contains *TensorFlow 2* implementations of a few VQ-VAE papers that caught my interest. The core idea is to create a Variational Autoencoders which bottleneck into a discrete representation. Each directory contains a paper implementation and results from experiments. Currently, the following papers are implemented:
 
 * [Vanilla VAE](vae/) ([paper](https://arxiv.org/abs/1312.6114))
 * [VQ-VAE](vq-vae/) ([paper](https://arxiv.org/abs/1711.00937))
