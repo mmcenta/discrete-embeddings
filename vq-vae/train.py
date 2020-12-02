@@ -203,7 +203,7 @@ if __name__ == "__main__":
     hyperparams = {
         'embedding_dim': args.embedding_dim,
         'n_embeddings': args.n_embeddings,
-        'commmitment_cost': args.commitment_cost,
+        'commitment_cost': args.commitment_cost,
         'train_data_variance': train_data_variance,
     }
     save_hyperparameters(os.path.join(checkpoints_dir, 'hyperparams.json'),
